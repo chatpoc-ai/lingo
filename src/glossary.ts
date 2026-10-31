@@ -65,7 +65,8 @@ export function promptLines(entries: Entry[], lang: string): string[] {
 export function glossaryProblems(entries: Entry[], translation: string, lang: string): string[] {
   const out: string[] = [];
   for (const e of entries) {
-    if (e.rule === "keep" && !translation.includes(e.term)) out.push(`"${e.term}" must stay as it is`);
+    // Case may follow the sentence ("Ingest" at its start); the word itself must stay.
+    if (e.rule === "keep" && !translation.toLowerCase().includes(e.term.toLowerCase())) out.push(`"${e.term}" must stay as it is`);
     if (e.rule === "fixed" && e.to?.[lang] && !translation.includes(e.to[lang])) out.push(`"${e.term}" must be "${e.to[lang]}"`);
   }
   return out;

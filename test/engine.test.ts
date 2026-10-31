@@ -62,6 +62,7 @@ describe("engine", () => {
     expect(calls[0]!.messages[0]!.content).toContain('- "heartbeat": always "心跳"');
     expect(calls[0]!.messages[0]!.content).toContain('- "Workday": keep as it is');
     expect((await e.translate("ops", [{ text: "no glossary words here" }], "zh-Hans"))[0]!.source).toBe("model");
+    expect((await e.translate("ops", [{ text: "workday is a product" }], "zh-Hans"))[0]!.source).toBe("model"); // a kept term in another case
     expect(calls[1]!.messages[0]!.content).not.toContain("Glossary:"); // only the entries a batch mentions
     // The app's own entry changes what "heartbeat" becomes: the old translation is stale.
     setEntries(db, "ops", [{ term: "heartbeat", rule: "keep" }]);
