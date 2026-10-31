@@ -23,6 +23,9 @@ export interface Config {
   };
   /** A JSON file with the global glossary, read at start-up (entries the API cannot change). */
   glossaryFile?: string;
+  /** The admin pages' port and the token they need (bearer, or a cookie set by ?token=); no port, no admin pages. */
+  adminPort?: number;
+  adminToken?: string;
   /** Bearer for /ops/health, /ops/metrics and /ops/manifest; without it those routes answer 404. */
   opsToken?: string;
   /** For /ops/manifest: the name of the app that serves the model, when it is one of the monitor's own. */
@@ -55,6 +58,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       timeoutMs: Number(env.LINGO_LLM_TIMEOUT_MS ?? 60_000),
     },
     glossaryFile: env.LINGO_GLOSSARY || undefined,
+    adminPort: env.LINGO_ADMIN_PORT ? Number(env.LINGO_ADMIN_PORT) : undefined,
+    adminToken: env.LINGO_ADMIN_TOKEN || undefined,
     opsToken: env.OPS_TOKEN || undefined,
     llmApp: env.LINGO_LLM_APP || undefined,
   };

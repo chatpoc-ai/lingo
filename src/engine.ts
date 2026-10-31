@@ -60,8 +60,8 @@ export function createEngine(db: Db, chat: Chat, cfg: Pick<Config, "llm" | "sour
   const stats: Stats = { calls: 0, failedCalls: 0, lastError: "", lastErrorAt: 0, lastOkAt: 0 };
   const lookup = db.prepare("SELECT text, origin, terms FROM memory WHERE app = ? AND hash = ? AND from_lang = ? AND lang = ?");
   const touch = db.prepare("UPDATE memory SET used_at = datetime('now'), uses = uses + 1 WHERE app = ? AND hash = ? AND from_lang = ? AND lang = ?");
-  const save = db.prepare(`INSERT INTO memory (app, hash, from_lang, lang, source, text, origin, terms, model) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT (app, hash, from_lang, lang) DO UPDATE SET source = excluded.source, text = excluded.text, origin = excluded.origin, terms = excluded.terms, model = excluded.model, created_at = datetime('now')
+  const save = db.prepare(`INSERT INTO memory (app, hash, from_lang, lang, source, text, origin, terms, model, reviewed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (app, hash, from_lang, lang) DO UPDATE SET source = excluded.source, text = excluded.text, origin = excluded.origin, terms = excluded.terms, model = excluded.model, reviewed = excluded.reviewed, created_at = datetime('now')
     WHERE memory.origin <> 'human' OR excluded.origin = 'human'`);
   const count = (app: string, lang: string, col: "hits" | "made" | "failed", n: number) => {
     if (n) db.prepare(`INSERT INTO usage (day, app, lang, ${col}) VALUES (date('now'), ?, ?, ?) ON CONFLICT (day, app, lang) DO UPDATE SET ${col} = ${col} + excluded.${col}`).run(app, lang, n);
@@ -119,7 +119,7 @@ export function createEngine(db: Db, chat: Chat, cfg: Pick<Config, "llm" | "sour
           t = s != null && !textProblems(j.item.text, s).length && !glossaryProblems(j.entries, s, to).length ? s : null;
         }
         if (t != null) {
-          save.run(app, hashOf(j.item.text), from, to, j.item.text.trim(), t.trim(), "model", j.terms, model);
+          save.run(app, hashOf(j.item.text), from, to, j.item.text.trim(), t.trim(), "model", j.terms, model, 0);
           made++;
         } else failed++;
         j.done(t?.trim() ?? null);
@@ -176,12 +176,12 @@ export function createEngine(db: Db, chat: Chat, cfg: Pick<Config, "llm" | "sour
 
   /** A person's translation: used from now on, never replaced by the model. */
   function setHuman(app: string, from: string, to: string, source: string, text: string) {
-    save.run(app, hashOf(source), from, to, source.trim(), text.trim(), "human", "", "");
+    save.run(app, hashOf(source), from, to, source.trim(), text.trim(), "human", "", "", 1);
   }
 
   /** Translations made elsewhere, by the hash of their source (the source text is optional). */
   function importOne(app: string, from: string, to: string, hash: string, text: string, source = "") {
-    db.prepare(`INSERT INTO memory (app, hash, from_lang, lang, source, text, origin) VALUES (?, ?, ?, ?, ?, ?, 'import') ON CONFLICT DO NOTHING`).run(app, hash, from, to, source, text);
+    db.prepare(`INSERT INTO memory (app, hash, from_lang, lang, source, text, origin, reviewed) VALUES (?, ?, ?, ?, ?, ?, 'import', 1) ON CONFLICT DO NOTHING`).run(app, hash, from, to, source, text);
   }
 
   return { translate, setHuman, importOne, stats, pending: () => inflight.size };

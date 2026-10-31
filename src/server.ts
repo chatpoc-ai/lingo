@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
+import { buildAdmin } from "./admin.ts";
 import { loadConfig, type Config } from "./config.ts";
 import { openDb, type Db } from "./db.ts";
 import { createEngine, type Engine, type Item } from "./engine.ts";
@@ -172,6 +173,10 @@ async function main() {
   if (cfg.glossaryFile) loadGlossaryFile(db, cfg.glossaryFile);
   const { app } = buildApp(cfg, db);
   await app.listen({ host: cfg.host, port: cfg.port });
+  if (cfg.adminPort) {
+    if (!cfg.adminToken) throw new Error("LINGO_ADMIN_PORT needs LINGO_ADMIN_TOKEN");
+    await buildAdmin(cfg, db).listen({ host: cfg.host, port: cfg.adminPort });
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((err) => {

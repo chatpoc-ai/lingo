@@ -62,8 +62,12 @@ header. Dates and numbers are the app's job (`Intl`), not translation.
 Not a document or file translator, not a chat or speech translator, not a place to send secrets:
 texts and their context go to the configured model.
 
+## Review
+
+Every translation the model makes starts unreviewed. The admin pages list them, most used first, so
+the texts people actually see are checked first; a person approves one, corrects it (it becomes a
+person's translation, locked), or has it made again. Imports and corrections count as reviewed.
+
 ## Next
 
-- An admin page: search the memory, correct and lock a translation, edit glossaries, see hits,
-  misses and failures per app and language.
 - Usage reports per app (the model's own cost is best counted by whatever serves it).

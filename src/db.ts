@@ -44,6 +44,9 @@ const MIGRATIONS = [
      failed INTEGER NOT NULL DEFAULT 0,
      PRIMARY KEY (day, app, lang)
    )`,
+  // A person has looked at it: corrections and imports count as looked at; the model's wait in the review queue.
+  `ALTER TABLE memory ADD COLUMN reviewed INTEGER NOT NULL DEFAULT 0;
+   UPDATE memory SET reviewed = 1 WHERE origin IN ('human', 'import')`,
 ];
 
 export type Db = DatabaseSync;

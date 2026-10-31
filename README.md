@@ -56,6 +56,21 @@ translation wherever it appears. Use a different text when you need a different 
 For a monitor, behind `OPS_TOKEN`: `GET /ops/health` (the model answers, failures today, queue),
 `GET /ops/metrics` (Prometheus), `GET /ops/manifest` (what lingo is made of). `GET /healthz` is open.
 
+## Admin pages
+
+With `LINGO_ADMIN_PORT` and `LINGO_ADMIN_TOKEN`, a second port serves pages for people:
+
+- **Overview**: per app and language, how many translations, how many a person corrected, how many
+  wait for review, and today's hits, new translations and failures.
+- **Review**: what the model made and nobody has looked at, most used first. "Looks right", or
+  correct it ("Save as correct" keeps your words and locks them), or "Translate again".
+- **Memory**: search either language; `memory?app=…&lang=…&q=<source>&exact=1` opens one text, for a
+  "this translation is wrong" link from your app.
+- **Glossary**: global and per app.
+
+Every link and form is relative, so the pages work behind a proxy under any path. The token goes in
+`Authorization: Bearer` (a proxy that does your login adds it), or once as `?token=`, which sets a cookie.
+
 ## Client
 
 `src/client.ts` has no dependencies; copy it into an app or import it.
