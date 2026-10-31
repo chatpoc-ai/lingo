@@ -50,7 +50,7 @@ tag close to a supported one is mapped to it (`zh-TW` → `zh-Hant`, `fr-CA` →
 | `PUT /v1/memory` | `{to, from?, text, translation}`: a person's translation. |
 | `GET /v1/memory?q=&lang=` | search this app's memory. |
 
-`context` helps the model and is not part of the memory's key: the same text gets the same
+In a catalog each entry's key is sent to the model with the context (`key: panel_open_url`), which tells it what a short label is for. `context` helps the model and is not part of the memory's key: the same text gets the same
 translation wherever it appears. Use a different text when you need a different translation.
 
 For a monitor, behind `OPS_TOKEN`: `GET /ops/health` (the model answers, failures today, queue),

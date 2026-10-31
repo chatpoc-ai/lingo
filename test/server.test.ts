@@ -6,8 +6,10 @@ import { buildApp } from "../src/server.ts";
 import { createClient } from "../src/client.ts";
 import type { Chat } from "../src/llm.ts";
 
+const seen: Array<{ text: string; context?: string }> = [];
 const chat: Chat = async (_m, msgs) => {
-  const items = (JSON.parse(msgs[1]!.content) as { items: Array<{ text: string }> }).items;
+  const items = (JSON.parse(msgs[1]!.content) as { items: Array<{ text: string; context?: string }> }).items;
+  seen.push(...items);
   return JSON.stringify({ translations: items.map((i) => `T:${i.text}`) });
 };
 
@@ -33,6 +35,7 @@ describe("server", () => {
     const { app } = setup();
     await app.inject({ method: "PUT", url: "/v1/memory", headers: auth, payload: { to: "ja", text: "fold", translation: "折りたたむ" } });
     const c = await app.inject({ method: "POST", url: "/v1/catalog", headers: auth, payload: { to: ["ja", "zh-Hans"], entries: { fold: "fold", parts: "{n} parts" } } });
+    expect(seen.find((i) => i.text === "{n} parts")!.context).toBe("key: parts"); // the key tells the model what a label is for
     expect(c.json()).toEqual({ catalogs: { ja: { fold: "折りたたむ", parts: "T:{n} parts" }, "zh-Hans": { fold: "T:fold", parts: "T:{n} parts" } }, missing: { ja: [], "zh-Hans": [] } });
     await app.inject({ method: "PUT", url: "/v1/glossary", headers: auth, payload: { entries: [{ term: "ingest", rule: "keep" }] } });
     expect((await app.inject({ url: "/v1/glossary", headers: auth })).json()).toEqual({ entries: [{ term: "ingest", rule: "keep", to: {} }] });

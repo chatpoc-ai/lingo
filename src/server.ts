@@ -72,7 +72,8 @@ export function buildApp(cfg: Config, db: Db, chat: Chat = openAiChat(cfg.llm)):
     const from = b.from === undefined ? cfg.sourceLang : lang(b.from, reply);
     if (!from) return;
     const keys = Object.keys(b.entries).filter((k) => typeof b.entries![k] === "string");
-    const items = keys.map((k) => ({ text: b.entries![k]!, context: b.context }));
+    // The key says what a short label is for ("panel_open_url": a link that opens something, not "unresolved").
+    const items = keys.map((k) => ({ text: b.entries![k]!, context: `${b.context ? `${b.context}; ` : ""}key: ${k}` }));
     const out: Record<string, Record<string, string>> = {};
     const missing: Record<string, string[]> = {};
     for (const to of tos) {
