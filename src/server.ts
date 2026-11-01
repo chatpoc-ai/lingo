@@ -13,7 +13,8 @@ const MAX_ITEMS = 100, MAX_TEXT = 6000, MAX_WAIT = 120_000;
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
-export function buildApp(cfg: Config, db: Db, chat: Chat = openAiChat(cfg.llm)): { app: FastifyInstance; engine: Engine } {
+/** `now` is for tests of the checks that depend on the time. */
+export function buildApp(cfg: Config, db: Db, chat: Chat = openAiChat(cfg.llm), now: () => number = Date.now): { app: FastifyInstance; engine: Engine } {
   const engine = createEngine(db, chat, cfg);
   const app = Fastify({ logger: process.env.NODE_ENV !== "test" && !process.env.VITEST, bodyLimit: 2 * 1024 * 1024 });
   let requests = 0;
@@ -106,7 +107,7 @@ export function buildApp(cfg: Config, db: Db, chat: Chat = openAiChat(cfg.llm)):
     return { rows };
   });
 
-  registerOps(app, cfg, db, engine, () => requests);
+  registerOps(app, cfg, db, engine, () => requests, now);
 
   return { app, engine };
 }

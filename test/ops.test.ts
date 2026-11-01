@@ -12,7 +12,7 @@ import type { Chat } from "../src/llm.ts";
 const ops = { authorization: "Bearer ops-secret" };
 
 function setup(over: Record<string, unknown> = {}) {
-  let down = false;
+  let down = false, shift = 0;
   const chat: Chat = async (_m, msgs) => {
     if (down) throw new Error("model x: HTTP 503 upstream unavailable");
     const items = (JSON.parse(msgs[1]!.content) as { items: Array<{ text: string }> }).items;
@@ -21,11 +21,11 @@ function setup(over: Record<string, unknown> = {}) {
   const cfg = { ...loadConfig({}), db: ":memory:", langs: ["en", "zh-Hans", "ja"], opsToken: "ops-secret", ...over };
   const db = openDb(":memory:");
   db.prepare("INSERT INTO tokens (hash, app) VALUES (?, 'shop')").run(createHash("sha256").update("tok").digest("hex"));
-  const { app, engine } = buildApp(cfg, db, chat);
+  const { app, engine } = buildApp(cfg, db, chat, () => Date.now() + shift);
   const translate = (texts: string[], to = "ja") => app.inject({ method: "POST", url: "/v1/translate", headers: { authorization: "Bearer tok" }, payload: { to, texts } });
   const act = (name: string, body: Record<string, unknown>, key?: string) => app.inject({ method: "POST", url: `/ops/actions/${name}`, headers: { ...ops, ...(key ? { "idempotency-key": key } : {}) }, payload: body });
   const check = async (id: string) => ((await app.inject({ url: "/ops/health", headers: ops })).json().checks as Array<{ id: string; level: string }>).find((c) => c.id === id)!;
-  return { app, db, engine, translate, act, check, setDown: (d: boolean) => (down = d) };
+  return { app, db, engine, translate, act, check, setDown: (d: boolean) => (down = d), later: (ms: number) => (shift += ms) };
 }
 
 describe("ops", () => {
@@ -37,17 +37,25 @@ describe("ops", () => {
     }
     expect((await app.inject({ method: "POST", url: "/ops/actions/probe_model", payload: {} })).statusCode).toBe(404);
     expect((await setup({ opsToken: undefined }).app.inject({ url: "/ops/health", headers: ops })).statusCode).toBe(404);
+    // Anything else under /ops/, with the token too.
+    for (const [method, url] of [["GET", "/ops/nope"], ["POST", "/ops/health"], ["GET", "/ops/actions/probe_model"], ["POST", "/ops/actions/nope"], ["DELETE", "/ops/manifest"]] as const) {
+      expect((await app.inject({ method, url })).statusCode).toBe(404);
+      expect((await app.inject({ method, url, headers: ops, ...(method === "POST" ? { payload: {} } : {}) })).statusCode).toBe(404);
+    }
   });
 
-  it("health: ok, then the model check bad after a failed call, and failures warn", async () => {
-    const { app, db, translate, check, setDown } = setup();
+  it("health: ok, then the model check bad after a failed call, warn an hour on, and failures warn", async () => {
+    const { app, db, translate, check, setDown, later } = setup();
     const h = (await app.inject({ url: "/ops/health", headers: ops })).json();
     expect(h).toMatchObject({ app: "lingo", status: "ok" });
+    expect(await check("failures")).toMatchObject({ level: "ok", detail: expect.stringMatching(/nothing to judge/) });
     expect(h.version).toBeTruthy();
     expect(h.checks.map((c: { id: string }) => c.id)).toEqual(["db", "model", "failures", "queue"]);
     setDown(true);
     await translate(["a"]);
     expect(await check("model")).toMatchObject({ level: "bad", detail: expect.stringMatching(/HTTP 503/) });
+    later(2 * 3_600_000);
+    expect(await check("model")).toMatchObject({ level: "warn", detail: expect.stringMatching(/120 min ago/) });
     db.prepare("INSERT INTO usage (day, app, lang, made, failed) VALUES (date('now'), 'shop', 'zh-Hans', 1, 30)").run();
     expect((await check("failures")).level).toBe("warn");
   });

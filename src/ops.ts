@@ -77,15 +77,16 @@ const durationMs = (d: string) => {
 /** Two glossary entries mean the same. */
 const sameEntry = (a: Entry, b: Entry) => a.rule === b.rule && (a.note ?? "") === (b.note ?? "") && JSON.stringify(Object.entries(a.to ?? {}).sort()) === JSON.stringify(Object.entries(b.to ?? {}).sort());
 
-export function registerOps(app: FastifyInstance, cfg: Config, db: Db, engine: Engine, requests: () => number) {
-  const started = Date.now();
+export function registerOps(app: FastifyInstance, cfg: Config, db: Db, engine: Engine, requests: () => number, now: () => number = Date.now) {
+  const started = now();
   const same = (given: string) => {
     if (!cfg.opsToken) return false;
     const x = Buffer.from(given), y = Buffer.from(cfg.opsToken);
     return x.length === y.length && timingSafeEqual(x, y);
   };
-  let endpoint = cfg.llm.url;
-  try { endpoint = new URL(cfg.llm.url).origin; } catch { /* keep as is */ }
+  // The public origin only: the configured URL may carry a key in its userinfo or query.
+  let endpoint: string | undefined;
+  try { endpoint = new URL(cfg.llm.url).origin; } catch { /* leave it out */ }
 
   function health() {
     const guarded = (id: string, fn: () => Check): Check => {
@@ -105,12 +106,13 @@ export function registerOps(app: FastifyInstance, cfg: Config, db: Db, engine: E
       guarded("model", () => {
         const data = { calls: s.calls, failed_calls: s.failedCalls, last_ok_at: iso(s.lastOkAt), last_error_at: iso(s.lastErrorAt) };
         if (!s.lastFailed) return { id: "model", level: "ok", detail: s.lastOkAt ? "the model answered its last call" : "no model call yet", data };
-        const fresh = Date.now() - s.lastErrorAt < MODEL_FRESH_MS;
-        const ago = Math.round((Date.now() - s.lastErrorAt) / 60_000);
+        const fresh = now() - s.lastErrorAt < MODEL_FRESH_MS;
+        const ago = Math.round((now() - s.lastErrorAt) / 60_000);
         return { id: "model", level: fresh ? "bad" : "warn", detail: `the model's last call, ${ago} min ago, failed: ${s.lastError.slice(0, 200)}`, data };
       }),
       guarded("failures", () => {
         const t = db.prepare("SELECT coalesce(sum(made), 0) AS made, coalesce(sum(failed), 0) AS failed FROM usage WHERE day = date('now')").get() as { made: number; failed: number };
+        if (!t.made && !t.failed) return { id: "failures", level: "ok", detail: "no text went to the model today, nothing to judge", data: t };
         return { id: "failures", level: t.failed > FAILED_WARN && t.failed > t.made ? "warn" : "ok", detail: `${t.made} texts translated today, ${t.failed} could not be`, data: t };
       }),
       guarded("queue", () => {
@@ -119,7 +121,7 @@ export function registerOps(app: FastifyInstance, cfg: Config, db: Db, engine: E
       }),
     ];
     const status: Level = checks.some((c) => c.level === "bad") ? "bad" : checks.some((c) => c.level === "warn") ? "warn" : "ok";
-    return { app: "lingo", version: VERSION, at: new Date().toISOString(), status, checks };
+    return { app: "lingo", version: VERSION, at: new Date(now()).toISOString(), status, checks };
   }
 
   function metrics() {
@@ -138,7 +140,7 @@ export function registerOps(app: FastifyInstance, cfg: Config, db: Db, engine: E
       "# TYPE lingo_requests_total counter",
       `lingo_requests_total ${requests()}`,
       "# TYPE lingo_uptime_seconds gauge",
-      `lingo_uptime_seconds ${Math.round((Date.now() - started) / 1000)}`,
+      `lingo_uptime_seconds ${Math.round((now() - started) / 1000)}`,
       "",
     ].join("\n");
   }
@@ -214,7 +216,7 @@ export function registerOps(app: FastifyInstance, cfg: Config, db: Db, engine: E
       dry_run: true,
       network: true,
       precondition: () => (probing ? "a probe is already running" : !target ? "no language other than the source language is configured" : !engine.stats.lastFailed ? (engine.stats.lastOkAt ? "the model answered its last call" : "no model call has failed since lingo started") : null),
-      describe: () => `send one test text to ${cfg.llm.model} at ${endpoint}`,
+      describe: () => `send one test text to ${cfg.llm.model}${endpoint ? ` at ${endpoint}` : ""}`,
       run: async () => {
         probing = true;
         try {
@@ -338,7 +340,7 @@ export function registerOps(app: FastifyInstance, cfg: Config, db: Db, engine: E
     components: [
       { id: "api", name: "API", kind: "service", ...(cfg.service ? { service: cfg.service } : {}), checks: [{ id: "queue" }, { id: "failures" }], depends_on: ["memory", "model"], description: "POST /v1/translate and /v1/catalog; answers from the memory at once, waits for the model at most as long as the caller asks." },
       { id: "memory", name: "memory (SQLite)", kind: "store", checks: [{ id: "db" }], description: "every translation by app, source hash and language, and the glossaries (global ones from a file read at start-up); people's corrections are never replaced." },
-      { id: "model", name: "translation model", kind: "external", url: endpoint, ...(cfg.llmApp ? { app: cfg.llmApp } : {}), checks: [{ id: "model" }, { id: "failures" }], description: "an OpenAI-compatible chat endpoint; its outages, quotas and timeouts show as failed calls." },
+      { id: "model", name: "translation model", kind: "external", ...(endpoint ? { url: endpoint } : {}), ...(cfg.llmApp ? { app: cfg.llmApp } : {}), checks: [{ id: "model" }, { id: "failures" }], description: "an OpenAI-compatible chat endpoint; its outages, quotas and timeouts show as failed calls." },
     ],
     tools: Object.entries(tools).map(([name, t]) => ({ name, description: t.description, ...(t.params ? { params: t.params } : {}), ...(t.network ? { network: true } : {}) })),
     actions: Object.entries(actions).map(([name, a]) => ({ name, description: a.description, ...(a.params ? { params: a.params } : {}), risk: a.risk, limit: a.limit, rollback: a.rollback, dry_run: a.dry_run })),
