@@ -71,6 +71,9 @@ describe("ops", () => {
     expect(m.components[0].service).toBe("lingo-svc");
     expect(m.tools.map((t: { name: string }) => t.name)).toEqual(["model_status", "usage", "lookup"]);
     expect(m.actions.map((a: { name: string; risk: string }) => [a.name, a.risk])).toEqual([["probe_model", "low"], ["retranslate", "medium"], ["reload_glossary", "medium"]]);
+    for (const a of m.actions) expect(a.title).toMatch(/^.{1,60}$/);
+    for (const a of m.actions) for (const k of a.checks ?? []) expect(checks.has(k)).toBe(true);
+    expect(m.actions[0].checks).toEqual(["model"]);
   });
 
   it("tools validate their params and change nothing", async () => {

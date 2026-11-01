@@ -31,7 +31,11 @@ interface Param { type: "string" | "integer"; required?: true; description: stri
 type Params = Record<string, string | number | undefined>;
 interface Tool { description: string; params?: Record<string, Param>; network?: true; run(p: Params): unknown }
 interface Action {
+  /** For the owner, at most 60 characters; `description` is for the AI. */
+  title: string;
   description: string;
+  /** The health checks it helps with; ops offers it first on those problems. */
+  checks?: string[];
   params?: Record<string, Param>;
   risk: "low" | "medium" | "high";
   limit: string;
@@ -209,6 +213,8 @@ export function registerOps(app: FastifyInstance, cfg: Config, db: Db, engine: E
 
   const actions: Record<string, Action> = {
     probe_model: {
+      title: "Ask the model if it answers now",
+      checks: ["model"],
       description: "Sends one fixed test text to the model, kept nowhere, so the model check says whether the model answers now rather than what its last call did",
       risk: "low",
       limit: "6/1h",
@@ -228,6 +234,7 @@ export function registerOps(app: FastifyInstance, cfg: Config, db: Db, engine: E
       },
     },
     retranslate: {
+      title: "Translate this text again",
       description: "Forgets one translation the model made and nobody reviewed, so the model makes it again the next time it is asked for (until then the source text is shown); a person's correction, an import or an approved translation is never touched",
       params: { app: { type: "string", required: true, description: "the app the text belongs to" }, text: { type: "string", required: true, description: "the source text, exactly" }, lang: { type: "string", required: true, description: "the language of the translation" }, from: { type: "string", description: "the source language (default the configured one)" } },
       risk: "medium",
@@ -253,6 +260,7 @@ export function registerOps(app: FastifyInstance, cfg: Config, db: Db, engine: E
       },
     },
     reload_glossary: {
+      title: "Reload the global glossary from its file",
       description: "Reads the global glossary file (LINGO_GLOSSARY) into the database again, as a restart does: global entries added by hand since are dropped, and the model's translations that used a changed term are made again when next asked for",
       risk: "medium",
       limit: "3/1d",
@@ -343,7 +351,7 @@ export function registerOps(app: FastifyInstance, cfg: Config, db: Db, engine: E
       { id: "model", name: "translation model", kind: "external", ...(endpoint ? { url: endpoint } : {}), ...(cfg.llmApp ? { app: cfg.llmApp } : {}), checks: [{ id: "model" }, { id: "failures" }], description: "an OpenAI-compatible chat endpoint; its outages, quotas and timeouts show as failed calls." },
     ],
     tools: Object.entries(tools).map(([name, t]) => ({ name, description: t.description, ...(t.params ? { params: t.params } : {}), ...(t.network ? { network: true } : {}) })),
-    actions: Object.entries(actions).map(([name, a]) => ({ name, description: a.description, ...(a.params ? { params: a.params } : {}), risk: a.risk, limit: a.limit, rollback: a.rollback, dry_run: a.dry_run })),
+    actions: Object.entries(actions).map(([name, a]) => ({ name, title: a.title, description: a.description, ...(a.checks ? { checks: a.checks } : {}), ...(a.params ? { params: a.params } : {}), risk: a.risk, limit: a.limit, rollback: a.rollback, dry_run: a.dry_run })),
   });
 
   app.register(async (ops) => {
