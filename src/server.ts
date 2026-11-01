@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { buildAdmin } from "./admin.ts";
 import { loadConfig, type Config } from "./config.ts";
@@ -7,19 +7,15 @@ import { createEngine, type Engine, type Item } from "./engine.ts";
 import { entriesOf, loadGlossaryFile, setEntries, type Entry } from "./glossary.ts";
 import { normalize } from "./lang.ts";
 import { openAiChat, type Chat } from "./llm.ts";
+import { registerOps } from "./ops.ts";
 
 const MAX_ITEMS = 100, MAX_TEXT = 6000, MAX_WAIT = 120_000;
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
-const same = (a: string, b: string) => {
-  const x = Buffer.from(a), y = Buffer.from(b);
-  return x.length === y.length && timingSafeEqual(x, y);
-};
 
 export function buildApp(cfg: Config, db: Db, chat: Chat = openAiChat(cfg.llm)): { app: FastifyInstance; engine: Engine } {
   const engine = createEngine(db, chat, cfg);
   const app = Fastify({ logger: process.env.NODE_ENV !== "test" && !process.env.VITEST, bodyLimit: 2 * 1024 * 1024 });
-  const started = Date.now();
   let requests = 0;
 
   /** The app a bearer token belongs to. */
@@ -110,59 +106,7 @@ export function buildApp(cfg: Config, db: Db, chat: Chat = openAiChat(cfg.llm)):
     return { rows };
   });
 
-  // For a monitor: health, metrics and what this service is made of, behind their own token.
-  const opsOk = (req: FastifyRequest) => !!cfg.opsToken && same(req.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "", cfg.opsToken);
-  app.get("/ops/health", async (req, reply) => {
-    if (!opsOk(req)) return reply.code(404).send();
-    const s = engine.stats;
-    const hour = Date.now() - 3_600_000;
-    const recentFail = s.lastErrorAt > hour && s.lastErrorAt > s.lastOkAt;
-    const today = db.prepare("SELECT coalesce(sum(made), 0) AS made, coalesce(sum(failed), 0) AS failed FROM usage WHERE day = date('now')").get() as { made: number; failed: number };
-    const checks = [
-      { id: "model", level: recentFail ? "bad" : "ok", detail: recentFail ? `the model does not answer: ${s.lastError.slice(0, 200)}` : s.lastOkAt ? "the model answers" : "no model call yet", data: { calls: s.calls, failed_calls: s.failedCalls } },
-      { id: "failures", level: today.failed > 20 && today.failed > today.made ? "warn" : "ok", detail: `${today.made} texts translated today, ${today.failed} could not be`, data: today },
-      { id: "queue", level: engine.pending() > 500 ? "warn" : "ok", detail: `${engine.pending()} texts being translated`, data: { pending: engine.pending() } },
-    ];
-    const status = checks.some((c) => c.level === "bad") ? "bad" : checks.some((c) => c.level === "warn") ? "warn" : "ok";
-    return { app: "lingo", at: new Date().toISOString(), status, checks };
-  });
-  app.get("/ops/metrics", async (req, reply) => {
-    if (!opsOk(req)) return reply.code(404).send();
-    const rows = db.prepare("SELECT app, lang, sum(hits) AS hits, sum(made) AS made, sum(failed) AS failed FROM usage GROUP BY app, lang").all() as Array<{ app: string; lang: string; hits: number; made: number; failed: number }>;
-    const memory = db.prepare("SELECT app, origin, count(*) AS n FROM memory GROUP BY app, origin").all() as Array<{ app: string; origin: string; n: number }>;
-    const lines = [
-      "# TYPE lingo_texts_total counter",
-      ...rows.flatMap((r) => (["hits", "made", "failed"] as const).map((k) => `lingo_texts_total{app="${r.app}",lang="${r.lang}",outcome="${k}"} ${r[k]}`)),
-      "# TYPE lingo_memory_rows gauge",
-      ...memory.map((m) => `lingo_memory_rows{app="${m.app}",origin="${m.origin}"} ${m.n}`),
-      "# TYPE lingo_model_calls_total counter",
-      `lingo_model_calls_total{outcome="ok"} ${engine.stats.calls - engine.stats.failedCalls}`,
-      `lingo_model_calls_total{outcome="failed"} ${engine.stats.failedCalls}`,
-      "# TYPE lingo_pending gauge",
-      `lingo_pending ${engine.pending()}`,
-      "# TYPE lingo_requests_total counter",
-      `lingo_requests_total ${requests}`,
-      "# TYPE lingo_uptime_seconds gauge",
-      `lingo_uptime_seconds ${Math.round((Date.now() - started) / 1000)}`,
-    ];
-    return reply.type("text/plain; version=0.0.4").send(`${lines.join("\n")}\n`);
-  });
-  app.get("/ops/manifest", async (req, reply) => {
-    if (!opsOk(req)) return reply.code(404).send();
-    let host = cfg.llm.url;
-    try { host = new URL(cfg.llm.url).origin; } catch { /* keep as is */ }
-    return {
-      app: "lingo",
-      context: "lingo translates the apps' texts. It keeps every translation (the memory) and asks the model only for what it has not seen; a text that cannot be translated is returned in its source language, so a failing model means untranslated text, not errors. Texts in the memory keep working while the model is down.",
-      tools: [],
-      actions: [],
-      components: [
-        { id: "api", name: "API", kind: "service", checks: [{ id: "queue" }, { id: "failures" }], depends_on: ["memory", "model"], description: "POST /v1/translate and /v1/catalog; answers from the memory at once, waits for the model at most as long as the caller asks." },
-        { id: "memory", name: "memory (SQLite)", kind: "store", checks: [{ id: "failures" }], description: "every translation by app, source hash and language; people's corrections are never replaced." },
-        { id: "model", name: "translation model", kind: "external", url: host, ...(cfg.llmApp ? { app: cfg.llmApp } : {}), checks: [{ id: "model" }], description: "an OpenAI-compatible chat endpoint." },
-      ],
-    };
-  });
+  registerOps(app, cfg, db, engine, () => requests);
 
   return { app, engine };
 }

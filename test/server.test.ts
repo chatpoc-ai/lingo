@@ -47,7 +47,7 @@ describe("server", () => {
     expect((await app.inject({ url: "/ops/health" })).statusCode).toBe(404);
     const h = (await app.inject({ url: "/ops/health", headers: { authorization: "Bearer ops-secret" } })).json();
     expect(h.app).toBe("lingo");
-    expect(h.checks.map((c: { id: string }) => c.id)).toEqual(["model", "failures", "queue"]);
+    expect(h.checks.map((c: { id: string }) => c.id)).toEqual(["db", "model", "failures", "queue"]);
     const m = (await app.inject({ url: "/ops/manifest", headers: { authorization: "Bearer ops-secret" } })).json();
     expect(m.components.map((c: { id: string }) => c.id)).toEqual(["api", "memory", "model"]);
     expect((await app.inject({ url: "/ops/metrics", headers: { authorization: "Bearer ops-secret" } })).body).toContain("lingo_model_calls_total");

@@ -53,8 +53,20 @@ tag close to a supported one is mapped to it (`zh-TW` → `zh-Hant`, `fr-CA` →
 In a catalog each entry's key is sent to the model with the context (`key: panel_open_url`), which tells it what a short label is for. `context` helps the model and is not part of the memory's key: the same text gets the same
 translation wherever it appears. Use a different text when you need a different translation.
 
-For a monitor, behind `OPS_TOKEN`: `GET /ops/health` (the model answers, failures today, queue),
-`GET /ops/metrics` (Prometheus), `GET /ops/manifest` (what lingo is made of). `GET /healthz` is open.
+For a monitor, behind `OPS_TOKEN`, the [OPStead](https://github.com/opstead/opstead) contract at level 4:
+`GET /ops/health` (the database, the model answers, failures today, queue), `GET /ops/metrics`
+(Prometheus), `GET /ops/manifest` (what lingo is made of, its tools and actions), read-only
+`GET /ops/tools/<name>` (`model_status`, `usage`, `lookup`), and `POST /ops/actions/<name>`:
+
+| Action | Does | Risk, limit |
+|---|---|---|
+| `probe_model` | one test text to the model, kept nowhere, so the model check is current; refused while the last call succeeded | low, 6/1h |
+| `retranslate` | forgets one unreviewed model translation (`app`, `text`, `lang`) so it is made again; never a person's or an import | medium, 20/1d |
+| `reload_glossary` | reads `LINGO_GLOSSARY` into the database again, as a restart does; refused when it already matches | medium, 3/1d |
+
+Each accepts `"dry_run": true` and an `Idempotency-Key`, re-checks itself (409 when it should not run),
+holds its limit, and is logged in the `ops_actions` table. `LINGO_SERVICE` names the host service for the
+manifest. `GET /healthz` is open.
 
 ## Admin pages
 

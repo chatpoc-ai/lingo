@@ -47,6 +47,17 @@ const MIGRATIONS = [
   // A person has looked at it: corrections and imports count as looked at; the model's wait in the review queue.
   `ALTER TABLE memory ADD COLUMN reviewed INTEGER NOT NULL DEFAULT 0;
    UPDATE memory SET reviewed = 1 WHERE origin IN ('human', 'import')`,
+  // Actions run through /ops/actions: the log, and the answers kept for an Idempotency-Key (24 h).
+  `CREATE TABLE ops_actions (
+     at     TEXT NOT NULL DEFAULT (datetime('now')),
+     name   TEXT NOT NULL,
+     params TEXT NOT NULL,            -- JSON
+     reason TEXT NOT NULL DEFAULT '',
+     key    TEXT,                     -- the Idempotency-Key of a run that may be answered again
+     status INTEGER NOT NULL,
+     body   TEXT NOT NULL             -- the JSON answer
+   );
+   CREATE UNIQUE INDEX ops_actions_key ON ops_actions (key) WHERE key IS NOT NULL`,
 ];
 
 export type Db = DatabaseSync;

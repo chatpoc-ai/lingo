@@ -53,11 +53,13 @@ export interface Stats {
   lastError: string;
   lastErrorAt: number;
   lastOkAt: number;
+  /** The last call failed (the times above can tie within a millisecond). */
+  lastFailed: boolean;
 }
 
 export function createEngine(db: Db, chat: Chat, cfg: Pick<Config, "llm" | "sourceLang">) {
   const inflight = new Map<string, Promise<string | null>>();
-  const stats: Stats = { calls: 0, failedCalls: 0, lastError: "", lastErrorAt: 0, lastOkAt: 0 };
+  const stats: Stats = { calls: 0, failedCalls: 0, lastError: "", lastErrorAt: 0, lastOkAt: 0, lastFailed: false };
   const lookup = db.prepare("SELECT text, origin, terms FROM memory WHERE app = ? AND hash = ? AND from_lang = ? AND lang = ?");
   const touch = db.prepare("UPDATE memory SET used_at = datetime('now'), uses = uses + 1 WHERE app = ? AND hash = ? AND from_lang = ? AND lang = ?");
   const save = db.prepare(`INSERT INTO memory (app, hash, from_lang, lang, source, text, origin, terms, model, reviewed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -85,10 +87,12 @@ export function createEngine(db: Db, chat: Chat, cfg: Pick<Config, "llm" | "sour
     try {
       answer = await chat(model, [{ role: "system", content: system }, { role: "user", content: JSON.stringify(payload) }]);
       stats.lastOkAt = Date.now();
+      stats.lastFailed = false;
     } catch (err) {
       stats.failedCalls++;
       stats.lastError = (err as Error).message;
       stats.lastErrorAt = Date.now();
+      stats.lastFailed = true;
       return items.map(() => null);
     }
     try {
@@ -184,7 +188,14 @@ export function createEngine(db: Db, chat: Chat, cfg: Pick<Config, "llm" | "sour
     db.prepare(`INSERT INTO memory (app, hash, from_lang, lang, source, text, origin, reviewed) VALUES (?, ?, ?, ?, ?, ?, 'import', 1) ON CONFLICT DO NOTHING`).run(app, hash, from, to, source, text);
   }
 
-  return { translate, setHuman, importOne, stats, pending: () => inflight.size };
+  /** One fixed text to the model, kept nowhere: tells whether the model answers now (the stats follow). */
+  async function probe(to: string): Promise<{ ok: boolean; error?: string }> {
+    const failedBefore = stats.failedCalls;
+    const [t] = await ask([{ text: "Open", entries: [] }], cfg.sourceLang, to, cfg.llm.model);
+    return t != null ? { ok: true } : { ok: false, error: stats.failedCalls > failedBefore ? stats.lastError.slice(0, 200) : "an answer without usable JSON" };
+  }
+
+  return { translate, setHuman, importOne, probe, stats, pending: () => inflight.size };
 }
 
 export type Engine = ReturnType<typeof createEngine>;

@@ -17,11 +17,16 @@ export interface Entry {
 
 const isEntry = (e: unknown): e is Entry => !!e && typeof (e as Entry).term === "string" && ((e as Entry).rule === "keep" || (e as Entry).rule === "fixed");
 
-/** The global glossary file: a JSON array of entries. Replaces the global entries in the database. */
-export function loadGlossaryFile(db: Db, path: string) {
+/** The global glossary file: a JSON array of entries. */
+export function readGlossaryFile(path: string): Entry[] {
   const raw = JSON.parse(readFileSync(path, "utf8")) as unknown;
   if (!Array.isArray(raw)) throw new Error(`${path}: expected a JSON array of {term, rule, to?, note?}`);
-  setEntries(db, "*", raw.filter(isEntry));
+  return raw.filter(isEntry);
+}
+
+/** Replaces the global entries in the database with the file's. */
+export function loadGlossaryFile(db: Db, path: string) {
+  setEntries(db, "*", readGlossaryFile(path));
 }
 
 export function setEntries(db: Db, scope: string, entries: Entry[]) {

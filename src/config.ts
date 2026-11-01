@@ -26,10 +26,12 @@ export interface Config {
   /** The admin pages' port and the token they need (bearer, or a cookie set by ?token=); no port, no admin pages. */
   adminPort?: number;
   adminToken?: string;
-  /** Bearer for /ops/health, /ops/metrics and /ops/manifest; without it those routes answer 404. */
+  /** Bearer for /ops/* (health, metrics, manifest, tools, actions); without it those routes answer 404. */
   opsToken?: string;
   /** For /ops/manifest: the name of the app that serves the model, when it is one of the monitor's own. */
   llmApp?: string;
+  /** For /ops/manifest: the host service that runs lingo (a systemd unit, a launchd label), for the monitor to watch. */
+  service?: string;
 }
 
 export function loadEnvFile(path: string, env: Record<string, string | undefined> = process.env) {
@@ -62,5 +64,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     adminToken: env.LINGO_ADMIN_TOKEN || undefined,
     opsToken: env.OPS_TOKEN || undefined,
     llmApp: env.LINGO_LLM_APP || undefined,
+    service: env.LINGO_SERVICE || undefined,
   };
 }
