@@ -8,7 +8,7 @@ import { readGlossaryFile, setEntries, type Entry } from "./glossary.ts";
 import { normalize } from "./lang.ts";
 
 /**
- * The OPStead ops contract (0.1) for a monitor, behind OPS_TOKEN: health, metrics, what lingo is made
+ * The OPStead ops contract (0.3) for a monitor, behind OPS_TOKEN: health, metrics, what lingo is made
  * of, read-only tools for an investigator, and a few actions it may run. Without the token (or with
  * none set) every /ops/* route answers 404.
  */
@@ -342,7 +342,7 @@ export function registerOps(app: FastifyInstance, cfg: Config, db: Db, engine: E
 
   const manifest = () => ({
     app: "lingo",
-    contract: "0.1",
+    contract: "0.3",
     version: VERSION,
     context: "lingo translates the texts of its owner's other apps. Each app has a token; it sends texts in its source language (English by default) and gets them back in another. Every translation is kept (the memory), so the model is asked only for what lingo has not seen, and texts in the memory keep working while the model is down. A text that cannot be translated, or is not ready within the caller's wait, is returned in its source language: a failing model means untranslated text, not errors, and a few texts a day that fail the checks (a placeholder or number lost, a glossary term changed) are normal. Traffic follows the apps: catalogs are built in bursts before a release with a slower model, run-time texts come in small batches; quiet hours and days with no model call at all are normal, so the model check can show an old failure until the next call (probe_model refreshes it). The model is any OpenAI-compatible endpoint, often a gateway, whose own errors, quotas and timeouts show up here as model failures. People review the model's translations on the admin pages; a person's correction is never replaced.",
     components: [
@@ -350,6 +350,7 @@ export function registerOps(app: FastifyInstance, cfg: Config, db: Db, engine: E
       { id: "memory", name: "memory (SQLite)", kind: "store", checks: [{ id: "db" }], description: "every translation by app, source hash and language, and the glossaries (global ones from a file read at start-up); people's corrections are never replaced." },
       { id: "model", name: "translation model", kind: "external", ...(endpoint ? { url: endpoint } : {}), ...(cfg.llmApp ? { app: cfg.llmApp } : {}), checks: [{ id: "model" }, { id: "failures" }], description: "an OpenAI-compatible chat endpoint; its outages, quotas and timeouts show as failed calls." },
     ],
+    providers: cfg.providers,
     tools: Object.entries(tools).map(([name, t]) => ({ name, description: t.description, ...(t.params ? { params: t.params } : {}), ...(t.network ? { network: true } : {}) })),
     actions: Object.entries(actions).map(([name, a]) => ({ name, title: a.title, description: a.description, ...(a.checks ? { checks: a.checks } : {}), ...(a.params ? { params: a.params } : {}), risk: a.risk, limit: a.limit, rollback: a.rollback, dry_run: a.dry_run })),
   });

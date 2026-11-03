@@ -66,7 +66,8 @@ For a monitor, behind `OPS_TOKEN`, the [OPStead](https://github.com/opstead/opst
 
 Each accepts `"dry_run": true` and an `Idempotency-Key`, re-checks itself (409 when it should not run),
 holds its limit, and is logged in the `ops_actions` table. `LINGO_SERVICE` names the host service for the
-manifest. `GET /healthz` is open.
+manifest, and `LINGO_PROVIDERS` the companies it runs on (`hosting:self`, or e.g.
+`hosting:Hetzner,edge:Cloudflare`; level 2 needs a hosting one). `GET /healthz` is open.
 
 ## Admin pages
 

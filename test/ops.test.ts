@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig, parseProviders } from "../src/config.ts";
 import { openDb } from "../src/db.ts";
 import { setEntries } from "../src/glossary.ts";
 import { buildApp } from "../src/server.ts";
@@ -61,9 +61,10 @@ describe("ops", () => {
   });
 
   it("manifest: ids, cross-references, tools and actions", async () => {
-    const { app } = setup({ service: "lingo-svc" });
+    const { app } = setup({ service: "lingo-svc", providers: parseProviders("hosting:self, edge:Cloudflare") });
     const m = (await app.inject({ url: "/ops/manifest", headers: ops })).json();
-    expect(m).toMatchObject({ app: "lingo", contract: "0.1" });
+    expect(m).toMatchObject({ app: "lingo", contract: "0.3" });
+    expect(m.providers).toEqual([{ kind: "hosting", name: "self" }, { kind: "edge", name: "Cloudflare" }]);
     const ids = new Set(m.components.map((c: { id: string }) => c.id));
     for (const c of m.components) for (const d of c.depends_on ?? []) expect(ids.has(d)).toBe(true);
     const checks = new Set(((await app.inject({ url: "/ops/health", headers: ops })).json().checks as Array<{ id: string }>).map((c) => c.id));
@@ -74,6 +75,15 @@ describe("ops", () => {
     for (const a of m.actions) expect(a.title).toMatch(/^.{1,60}$/);
     for (const a of m.actions) for (const k of a.checks ?? []) expect(checks.has(k)).toBe(true);
     expect(m.actions[0].checks).toEqual(["model"]);
+  });
+
+  it("providers: kind:name pairs from LINGO_PROVIDERS, none when unset, an unknown kind refused", () => {
+    expect(loadConfig({}).providers).toEqual([]);
+    expect(loadConfig({ LINGO_PROVIDERS: "hosting:self" }).providers).toEqual([{ kind: "hosting", name: "self" }]);
+    expect(parseProviders("hosting:IONOS, mail:IONOS,")).toEqual([{ kind: "hosting", name: "IONOS" }, { kind: "mail", name: "IONOS" }]);
+    expect(() => parseProviders("cdn:Cloudflare")).toThrow(/LINGO_PROVIDERS/);
+    expect(() => parseProviders("hosting")).toThrow(/LINGO_PROVIDERS/);
+    expect(() => parseProviders("hosting:")).toThrow(/LINGO_PROVIDERS/);
   });
 
   it("tools validate their params and change nothing", async () => {

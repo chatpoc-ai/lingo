@@ -32,6 +32,24 @@ export interface Config {
   llmApp?: string;
   /** For /ops/manifest: the host service that runs lingo (a systemd unit, a launchd label), for the monitor to watch. */
   service?: string;
+  /** For /ops/manifest: the companies this deployment runs on and is reached through ("self" for your own machine). */
+  providers: Provider[];
+}
+
+export const PROVIDER_KINDS = ["hosting", "edge", "dns", "mail", "storage", "registrar"] as const;
+export interface Provider {
+  kind: (typeof PROVIDER_KINDS)[number];
+  name: string;
+}
+
+/** "hosting:self,edge:Cloudflare" → providers; a kind the contract does not know is an error, not a guess. */
+export function parseProviders(spec: string | undefined): Provider[] {
+  return (spec ?? "").split(",").map((s) => s.trim()).filter(Boolean).map((item) => {
+    const i = item.indexOf(":");
+    const kind = item.slice(0, i).trim(), name = item.slice(i + 1).trim();
+    if (i < 0 || !name || !(PROVIDER_KINDS as readonly string[]).includes(kind)) throw new Error(`LINGO_PROVIDERS: "${item}" is not kind:name with kind one of ${PROVIDER_KINDS.join(", ")}`);
+    return { kind: kind as Provider["kind"], name };
+  });
 }
 
 export function loadEnvFile(path: string, env: Record<string, string | undefined> = process.env) {
@@ -65,5 +83,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     opsToken: env.OPS_TOKEN || undefined,
     llmApp: env.LINGO_LLM_APP || undefined,
     service: env.LINGO_SERVICE || undefined,
+    providers: parseProviders(env.LINGO_PROVIDERS),
   };
 }
