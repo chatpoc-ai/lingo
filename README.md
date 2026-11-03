@@ -55,7 +55,7 @@ translation wherever it appears. Use a different text when you need a different 
 
 For a monitor, behind `OPS_TOKEN`, the [OPStead](https://github.com/opstead/opstead) contract at level 4:
 `GET /ops/health` (the database, the model answers, failures today, queue), `GET /ops/metrics`
-(Prometheus), `GET /ops/manifest` (what lingo is made of, its tools and actions), read-only
+(Prometheus), `GET /ops/manifest` (what lingo is made of and runs on, its tools and actions), read-only
 `GET /ops/tools/<name>` (`model_status`, `usage`, `lookup`), and `POST /ops/actions/<name>`:
 
 | Action | Does | Risk, limit |

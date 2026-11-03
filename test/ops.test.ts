@@ -63,7 +63,11 @@ describe("ops", () => {
   it("manifest: ids, cross-references, tools and actions", async () => {
     const { app } = setup({ service: "lingo-svc", providers: parseProviders("hosting:self, edge:Cloudflare") });
     const m = (await app.inject({ url: "/ops/manifest", headers: ops })).json();
-    expect(m).toMatchObject({ app: "lingo", contract: "0.3" });
+    expect(m).toMatchObject({ app: "lingo", contract: "0.4" });
+    const tech = Object.fromEntries(m.components.map((c: { id: string; tech?: unknown }) => [c.id, c.tech]));
+    expect(tech.api).toEqual([{ name: "Node.js", version: process.versions.node }]);
+    expect(tech.memory).toEqual([{ name: "SQLite", version: expect.stringMatching(/^3\.\d+\.\d+$/) }]);
+    expect(tech.model).toBeUndefined();
     expect(m.providers).toEqual([{ kind: "hosting", name: "self" }, { kind: "edge", name: "Cloudflare" }]);
     const ids = new Set(m.components.map((c: { id: string }) => c.id));
     for (const c of m.components) for (const d of c.depends_on ?? []) expect(ids.has(d)).toBe(true);
