@@ -6,7 +6,9 @@
 const PATTERNS: Array<[string, RegExp]> = [
   ["placeholder", /\{[\w.]+\}|%\(\w+\)s|%[sd]|\$\{\w+\}|\{\{\s*[\w.]+\s*\}\}/g],
   ["code", /`[^`\n]+`/g],
-  ["url", /\bhttps?:\/\/[^\s)<>"']+/g],
+  // ASCII only, not ending in punctuation: a sentence's comma is no part of the URL, and a translation
+  // may run straight on in a language written without spaces.
+  ["url", /\bhttps?:\/\/[^\s)<>"'\u0080-￿]*[^\s)<>"'\u0080-￿.,;:!?]/g],
   ["tag", /<\/?[a-zA-Z][\w-]*(?:\s[^<>]*)?\/?>/g],
   ["link", /\]\([^)\s]+\)/g],
 ];
